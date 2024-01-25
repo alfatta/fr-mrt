@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { convertImageToBase64, removeBase64Prefix } from "@/lib/imageConverter";
 import { validate } from "@/services";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "../ui/use-toast";
 import {
   ControlEventInstruction,
@@ -14,6 +14,13 @@ import {
   photoUrlState,
 } from "@/recoil/atom";
 import { useRecoilState, useSetRecoilState } from "recoil";
+
+const moneyFormat = (number: number) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(number);
 
 function PhotoResult() {
   const [photoUrl, setPhotoUrl] = useRecoilState<string>(photoUrlState);
@@ -34,6 +41,8 @@ function PhotoResult() {
       })
       .catch((error) => console.error(error));
   }, [photoUrl, setPhotoBase64]);
+
+  const timeDiff = useRef(0);
 
   // useEffect(() => {
   //   const fetchData = async () => {
@@ -93,6 +102,8 @@ function PhotoResult() {
         return;
       }
 
+      const startTime = new Date().getTime();
+
       // Indicate that an API call is now in progress
       setIsApiCallInProgress(true);
 
@@ -103,53 +114,63 @@ function PhotoResult() {
         // Make the API call
         const response = await validate(payload);
 
+        const endTime = new Date().getTime();
+        timeDiff.current = endTime - startTime;
+
         // Check the response and perform actions based on the status code
         if (response.status_code === "1") {
           toast({
             variant: "success",
             title: "Success",
-            // description: response.status_message,
+            // description: response.data.name,
+            description:
+              response.data.name +
+              " - Remaining Balance: " +
+              moneyFormat(response.data.currentBalance),
           });
         } else {
           toast({
             variant: "destructive",
             title: "Failed",
-            // description: response.status_message,
+            description: response.status_message,
           });
         }
       } catch (error) {
         // Error handling logic
-        console.error(error);
+        const endTime = new Date().getTime();
+        timeDiff.current = endTime - startTime;
         toast({
           variant: "destructive",
           title: "Error",
-          // description: "An error occurred while validating."
+          description: "An error occurred while validating.",
         });
       } finally {
         // Reset the API call progress indicator and other states as necessary
         setIsApiCallInProgress(false);
         setPhotoBase64(""); // Consider if this reset is appropriate for your flow
         // Additional cleanup logic if needed
+        setTimeout(() => {
+          console.log("handleContinueDetection");
+          setPhotoTaken(false);
+          setPhotoUrl("");
+          dispatchControlEvent(
+            FaceCustomEvent.CONTROL,
+            ControlEventInstruction.CONTINUE_DETECTION
+          );
+        }, 1000); // 10000 = 10 seconds delay
       }
     };
 
     // Call the fetchData function
     fetchData();
-
-    setTimeout(() => {
-      console.log("handleContinueDetection");
-      setPhotoTaken(false);
-      setPhotoUrl("");
-      dispatchControlEvent(
-        FaceCustomEvent.CONTROL,
-        ControlEventInstruction.CONTINUE_DETECTION
-      );
-    }, 5000); // 10000 = 10 seconds delay
   }, [photoBase64]);
 
   return (
     <div className="mt-[1rem] w-[40rem] relative overflow-hidden">
       <img alt="Web component result" src={photoUrl} />
+      {timeDiff.current > 0 && (
+        <p className="mt-2">Analyzed in: {timeDiff.current}ms</p>
+      )}
     </div>
   );
 }
